@@ -126,3 +126,27 @@ def get_matches():
     """모든 매칭 조회"""
     return load_table("Matches")
 
+def update_donor(donor_id, name, email, skill, mode, availability):
+    """재능기부자 정보 업데이트"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Donors 
+        SET name = ?, email = ?, skill = ?, mode = ?, availability = ?
+        WHERE donor_id = ?
+    """, (name, email, skill, mode, availability, donor_id))
+    conn.commit()
+    conn.close()
+
+def update_request(request_id, email, needed_skill, description, status):
+    """재능 수요 정보 업데이트"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Requests 
+        SET email = ?, needed_skill = ?, description = ?, status = ?
+        WHERE request_id = ?
+    """, (email, needed_skill, description, status, request_id))
+    conn.commit()
+    conn.close()
+
