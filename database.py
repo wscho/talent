@@ -1,152 +1,159 @@
-import sqlite3
 import pandas as pd
+from supabase import create_client, Client
+import streamlit as st
+from typing import Optional
 
-DB_FILE = "talent_matching.db"
-
-def get_connection():
-    """SQLite 데이터베이스 연결"""
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row  # 딕셔너리 형태로 결과 반환
-    return conn
+def get_supabase_client() -> Optional[Client]:
+    """Supabase 클라이언트 생성"""
+    try:
+        # Streamlit secrets에서 Supabase 설정 가져오기
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        
+        if not url or not key:
+            return None
+        
+        # URL이 기본값인지 확인
+        if "your-project-id" in url or "your-anon-key" in key:
+            return None
+        
+        return create_client(url, key)
+    except (KeyError, AttributeError):
+        # secrets에 키가 없거나 secrets가 없는 경우
+        return None
+    except Exception:
+        # 기타 오류
+        return None
 
 def init_database():
-    """데이터베이스 초기화 및 테이블 생성"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Donors 테이블 생성
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Donors (
-            donor_id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            skill TEXT NOT NULL,
-            mode TEXT NOT NULL,
-            availability TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
-    
-    # Requests 테이블 생성
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Requests (
-            request_id TEXT PRIMARY KEY,
-            email TEXT NOT NULL,
-            needed_skill TEXT NOT NULL,
-            description TEXT,
-            status TEXT NOT NULL DEFAULT '대기',
-            created_at TEXT NOT NULL
-        )
-    """)
-    
-    # Matches 테이블 생성
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Matches (
-            match_id TEXT PRIMARY KEY,
-            donor_id TEXT NOT NULL,
-            request_id TEXT NOT NULL,
-            score INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT '대기',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (donor_id) REFERENCES Donors(donor_id),
-            FOREIGN KEY (request_id) REFERENCES Requests(request_id)
-        )
-    """)
-    
-    conn.commit()
-    conn.close()
+    """데이터베이스 초기화 (Supabase는 이미 생성되어 있어야 함)"""
+    # Supabase는 클라우드 데이터베이스이므로 여기서는 연결만 확인
+    client = get_supabase_client()
+    if client:
+        return True
+    return False
 
-def load_table(table_name):
+def load_table(table_name: str) -> pd.DataFrame:
     """테이블 데이터를 DataFrame으로 로드"""
-    conn = get_connection()
-    df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
-    conn.close()
-    return df
+    # 설정 확인
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        
+        # 기본값 확인
+        if "your-project-id" in url or "your-anon-key" in key or not url or not key:
+            st.error("⚠️ Supabase 설정이 필요합니다!\n\n.streamlit/secrets.toml 파일에 실제 Supabase 정보를 입력해주세요.\n\n설정 방법은 SUPABASE_SETUP.md 파일을 참고하세요.")
+            return pd.DataFrame()
+    except (KeyError, AttributeError):
+        st.error("⚠️ Supabase 설정이 필요합니다!\n\n.streamlit/secrets.toml 파일에 SUPABASE_URL과 SUPABASE_KEY를 설정해주세요.")
+        return pd.DataFrame()
+    
+    client = get_supabase_client()
+    if not client:
+        st.error("⚠️ Supabase 클라이언트를 생성할 수 없습니다!\n\n.streamlit/secrets.toml 파일의 SUPABASE_URL과 SUPABASE_KEY를 확인해주세요.")
+        return pd.DataFrame()
+    
+    try:
+        response = client.table(table_name).select("*").execute()
+        if response.data:
+            return pd.DataFrame(response.data)
+        else:
+            return pd.DataFrame()
+    except Exception as e:
+        error_msg = str(e)
+        if "getaddrinfo failed" in error_msg.lower() or "failed to resolve" in error_msg.lower():
+            try:
+                url = st.secrets["SUPABASE_URL"]
+                st.error(f"⚠️ Supabase 서버에 연결할 수 없습니다!\n\n원인:\n- SUPABASE_URL이 올바르지 않을 수 있습니다 (현재: {url[:60] if len(url) > 60 else url})\n- 인터넷 연결을 확인해주세요\n- Supabase 프로젝트가 활성 상태인지 확인해주세요\n\n설정 확인:\n1. Supabase 대시보드 → Settings → API Keys\n2. 브라우저 주소창에서 Project URL 확인\n3. .streamlit/secrets.toml 파일에 올바른 URL 입력")
+            except:
+                st.error(f"⚠️ Supabase 서버에 연결할 수 없습니다!\n\n.streamlit/secrets.toml 파일의 SUPABASE_URL을 확인해주세요.")
+        elif "JWT" in error_msg or "unauthorized" in error_msg.lower() or "401" in error_msg:
+            st.error(f"⚠️ 인증 오류가 발생했습니다!\n\nSUPABASE_KEY가 올바른지 확인해주세요:\n- Settings → API Keys → Legacy anon, service_role API keys\n- anon public 키를 복사하여 사용")
+        else:
+            st.error(f"❌ 테이블 조회 오류 ({table_name}): {error_msg}")
+        return pd.DataFrame()
 
-def append_row(table_name, row_data):
+def append_row(table_name: str, row_data: dict):
     """테이블에 행 추가
     
     Args:
         table_name: 테이블 이름 (Donors, Requests, Matches)
         row_data: 딕셔너리 형태의 데이터
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    # 설정 확인
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        
+        # 기본값 확인
+        if "your-project-id" in url or "your-anon-key" in key or not url or not key:
+            raise Exception("⚠️ Supabase 설정이 필요합니다!\n\n.streamlit/secrets.toml 파일에 실제 Supabase 정보를 입력해주세요:\n- SUPABASE_URL: Supabase 프로젝트 URL\n- SUPABASE_KEY: anon public 키\n\n설정 방법은 SUPABASE_SETUP.md 파일을 참고하세요.")
+    except (KeyError, AttributeError):
+        raise Exception("⚠️ Supabase 설정이 필요합니다!\n\n.streamlit/secrets.toml 파일에 SUPABASE_URL과 SUPABASE_KEY를 설정해주세요.\n\n설정 방법은 SUPABASE_SETUP.md 파일을 참고하세요.")
     
-    if table_name == "Donors":
-        cursor.execute("""
-            INSERT INTO Donors (donor_id, name, email, skill, mode, availability, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            row_data.get("donor_id"),
-            row_data.get("name"),
-            row_data.get("email"),
-            row_data.get("skill"),
-            row_data.get("mode"),
-            row_data.get("availability", ""),
-            row_data.get("created_at")
-        ))
-    elif table_name == "Requests":
-        cursor.execute("""
-            INSERT INTO Requests (request_id, email, needed_skill, description, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            row_data.get("request_id"),
-            row_data.get("email"),
-            row_data.get("needed_skill"),
-            row_data.get("description", ""),
-            row_data.get("status", "대기"),
-            row_data.get("created_at")
-        ))
-    elif table_name == "Matches":
-        cursor.execute("""
-            INSERT INTO Matches (match_id, donor_id, request_id, score, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            row_data.get("match_id"),
-            row_data.get("donor_id"),
-            row_data.get("request_id"),
-            row_data.get("score"),
-            row_data.get("status", "대기"),
-            row_data.get("created_at")
-        ))
+    client = get_supabase_client()
+    if not client:
+        raise Exception("⚠️ Supabase 클라이언트를 생성할 수 없습니다!\n\n.streamlit/secrets.toml 파일의 SUPABASE_URL과 SUPABASE_KEY를 확인해주세요.\n- SUPABASE_URL이 올바른 형식인지 확인 (예: https://xxxxx.supabase.co)\n- SUPABASE_KEY가 올바른 anon public 키인지 확인")
     
-    conn.commit()
-    conn.close()
+    try:
+        response = client.table(table_name).insert(row_data).execute()
+        return response.data
+    except Exception as e:
+        error_msg = str(e)
+        if "getaddrinfo failed" in error_msg.lower() or "failed to resolve" in error_msg.lower():
+            raise Exception(f"⚠️ Supabase 서버에 연결할 수 없습니다!\n\n원인:\n- SUPABASE_URL이 올바르지 않을 수 있습니다 (현재: {url[:60] if len(url) > 60 else url})\n- 인터넷 연결을 확인해주세요\n- Supabase 프로젝트가 활성 상태인지 확인해주세요\n\n설정 확인:\n1. Supabase 대시보드 → Settings → API Keys\n2. 브라우저 주소창에서 Project URL 확인\n3. .streamlit/secrets.toml 파일에 올바른 URL 입력")
+        elif "duplicate key" in error_msg.lower() or "unique constraint" in error_msg.lower():
+            raise Exception(f"이미 존재하는 데이터입니다: {error_msg}")
+        elif "JWT" in error_msg or "unauthorized" in error_msg.lower() or "401" in error_msg:
+            raise Exception(f"⚠️ 인증 오류가 발생했습니다!\n\nSUPABASE_KEY가 올바른지 확인해주세요:\n- Settings → API Keys → Legacy anon, service_role API keys\n- anon public 키를 복사하여 사용\n\n오류 상세: {error_msg}")
+        else:
+            raise Exception(f"데이터 추가 오류: {error_msg}")
 
-def get_donors():
+def get_donors() -> pd.DataFrame:
     """모든 재능기부자 조회"""
-    return load_table("Donors")
+    return load_table("donors")
 
-def get_requests():
+def get_requests() -> pd.DataFrame:
     """모든 재능 수요 조회"""
-    return load_table("Requests")
+    return load_table("requests")
 
-def get_matches():
+def get_matches() -> pd.DataFrame:
     """모든 매칭 조회"""
-    return load_table("Matches")
+    return load_table("matches")
 
-def update_donor(donor_id, name, email, skill, mode, availability):
+def update_donor(donor_id: str, name: str, email: str, skill: str, mode: str, availability: str):
     """재능기부자 정보 업데이트"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE Donors 
-        SET name = ?, email = ?, skill = ?, mode = ?, availability = ?
-        WHERE donor_id = ?
-    """, (name, email, skill, mode, availability, donor_id))
-    conn.commit()
-    conn.close()
+    client = get_supabase_client()
+    if not client:
+        raise Exception("Supabase 클라이언트를 생성할 수 없습니다.")
+    
+    try:
+        update_data = {
+            "name": name,
+            "email": email,
+            "skill": skill,
+            "mode": mode,
+            "availability": availability
+        }
+        response = client.table("donors").update(update_data).eq("donor_id", donor_id).execute()
+        return response.data
+    except Exception as e:
+        raise Exception(f"데이터 업데이트 오류: {str(e)}")
 
-def update_request(request_id, email, needed_skill, description, status):
+def update_request(request_id: str, email: str, needed_skill: str, description: str, status: str):
     """재능 수요 정보 업데이트"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE Requests 
-        SET email = ?, needed_skill = ?, description = ?, status = ?
-        WHERE request_id = ?
-    """, (email, needed_skill, description, status, request_id))
-    conn.commit()
-    conn.close()
-
+    client = get_supabase_client()
+    if not client:
+        raise Exception("Supabase 클라이언트를 생성할 수 없습니다.")
+    
+    try:
+        update_data = {
+            "email": email,
+            "needed_skill": needed_skill,
+            "description": description,
+            "status": status
+        }
+        response = client.table("requests").update(update_data).eq("request_id", request_id).execute()
+        return response.data
+    except Exception as e:
+        raise Exception(f"데이터 업데이트 오류: {str(e)}")

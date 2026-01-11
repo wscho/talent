@@ -1,34 +1,58 @@
 # 🎁 재능기부 매칭 플랫폼
 
-SQLite와 Streamlit을 기반으로 한 경량 재능기부 매칭 시스템입니다.
+Supabase와 Streamlit을 기반으로 한 재능기부 매칭 시스템입니다.
+재능기부자가 앱에서 자신이 보유한 기술을 등록하고, 재능수요자가 필요한 기술을 등록하면 자동으로 매칭됩니다. 
 
 ## ✨ 특징
 
-- ✅ 서버 불필요
-- ✅ 외부 서비스 불필요 (Google Sheet 등)
-- ✅ 배포 간단
-- ✅ 유지비 0원
-- ✅ SQLite를 단일 데이터 소스로 사용
-- ✅ 로컬 파일 기반 데이터베이스
+- ✅ 클라우드 기반 데이터베이스 (Supabase)
+- ✅ Streamlit Cloud로 간편한 배포
+- ✅ 실시간 데이터 동기화
+- ✅ 확장 가능한 구조
+- ✅ HTTPS 자동 지원
 
 ## 📋 사전 요구사항
 
 1. Python 3.7 이상
-2. 추가 설정 불필요 (SQLite는 Python 표준 라이브러리)
+2. Supabase 계정 (무료 플랜 가능)
+3. Streamlit Cloud 계정 (선택사항, 배포 시)
 
-## 🚀 설치 방법
+## 🚀 빠른 시작
 
-### 1. 의존성 설치
+### 1. Supabase 설정
+
+1. [Supabase](https://supabase.com)에 가입 및 로그인
+2. 새 프로젝트 생성
+3. `supabase_setup.sql` 파일을 SQL Editor에서 실행하여 테이블 생성
+4. Settings → API Keys에서 Project URL과 API Key 복사
+
+자세한 설정 방법은 [SUPABASE_SETUP.md](SUPABASE_SETUP.md) 파일을 참고하세요.
+
+### 2. 의존성 설치
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 데이터베이스 초기화
+### 3. 로컬 개발 환경 설정
 
-앱을 처음 실행하면 자동으로 `talent_matching.db` 파일이 생성되고 필요한 테이블이 생성됩니다.
+`.streamlit/secrets.toml` 파일 생성:
 
-## 🎯 실행 방법
+```bash
+# Windows (PowerShell)
+mkdir .streamlit
+```
+
+`.streamlit/secrets.toml` 파일 내용:
+
+```toml
+SUPABASE_URL = "https://your-project-id.supabase.co"
+SUPABASE_KEY = "your-anon-key-here"
+```
+
+⚠️ **주의**: `.streamlit/secrets.toml` 파일은 Git에 커밋하지 마세요 (이미 `.gitignore`에 포함됨)
+
+### 4. 로컬에서 실행
 
 ```bash
 streamlit run app.py
@@ -38,17 +62,50 @@ streamlit run app.py
 
 - 🧑‍🤝‍🧑 **재능기부자 등록**: 자신의 재능을 등록
 - 🙋 **재능수요자 등록**: 필요한 재능을 요청
-- 🔗 **매칭 현황**: 등록된 정보를 기반으로 매칭 결과 확인
+- 👥 **기부자 현황**: 등록된 기부자 목록 및 편집
+- 🙋 **수요자 현황**: 등록된 수요자 목록 및 편집
+- 🔗 **매칭 현황**: Wild 매칭을 통한 자동 매칭 결과
+
+## ☁️ Streamlit Cloud 배포
+
+### 1. GitHub에 코드 푸시
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/yourusername/talent.git
+git push -u origin main
+```
+
+### 2. Streamlit Cloud 연결
+
+1. [Streamlit Cloud](https://streamlit.io/cloud)에 로그인
+2. "New app" 클릭
+3. GitHub 저장소 선택
+4. Branch: `main`, Main file: `app.py` 선택
+5. "Advanced settings" → "Secrets"에서 다음 추가:
+
+```toml
+SUPABASE_URL = "https://your-project-id.supabase.co"
+SUPABASE_KEY = "your-anon-key-here"
+```
+
+6. "Deploy" 클릭
+
+배포가 완료되면 자동으로 HTTPS URL이 생성됩니다!
 
 ## 📁 프로젝트 구조
 
 ```
-talent_matching/
+talent/
  ├─ app.py                 # Streamlit 메인 앱
- ├─ database.py            # SQLite 데이터베이스 연동 모듈
- ├─ matching.py            # 매칭 로직
- ├─ talent_matching.db     # SQLite 데이터베이스 파일 (자동 생성)
+ ├─ database.py            # Supabase 데이터베이스 연동 모듈
+ ├─ matching.py            # Wild 매칭 로직
  ├─ requirements.txt       # 의존성 목록
+ ├─ supabase_setup.sql     # Supabase 테이블 생성 SQL
+ ├─ SUPABASE_SETUP.md      # Supabase 설정 가이드
  └─ README.md              # 프로젝트 설명
 ```
 
@@ -73,50 +130,39 @@ match_id | donor_id | request_id | score | status | created_at
 
 ### 재능기부자 등록
 - 이름/닉네임, 이메일, 재능, 방식(온라인/오프라인), 가능 시간 입력
-- SQLite 데이터베이스의 `Donors` 테이블에 자동 저장
+- Supabase 데이터베이스의 `Donors` 테이블에 자동 저장
 
 ### 재능수요자 등록
 - 이메일, 필요한 재능, 요청 내용 입력
-- SQLite 데이터베이스의 `Requests` 테이블에 자동 저장
+- Supabase 데이터베이스의 `Requests` 테이블에 자동 저장
+
+### 기부자/수요자 현황
+- 등록된 데이터 목록 확인
+- 셀 편집 기능으로 직접 수정 가능
+- 검색, 정렬, 필터 기능
+- CSV 다운로드 지원
 
 ### 매칭 현황
-- 등록된 재능기부자와 수요자를 자동 매칭
-- 매칭 점수 기반으로 결과 표시
-- 등록 현황 통계 제공
+- Wild 매칭 알고리즘으로 자동 매칭
+- 재능 키워드 부분 일치 기반 매칭
+- 매칭 통계 및 결과 다운로드
 
-## 💾 데이터 관리
+## 🌐 아키텍처
 
-### 데이터베이스 파일 위치
-- 데이터베이스 파일: `talent_matching.db` (프로젝트 루트 디렉토리)
-- 앱을 처음 실행하면 자동으로 생성됩니다
-
-### 데이터 백업
-데이터베이스 파일(`talent_matching.db`)을 정기적으로 백업하세요:
-```bash
-# Windows
-copy talent_matching.db talent_matching_backup.db
-
-# Linux/Mac
-cp talent_matching.db talent_matching_backup.db
+```
+Streamlit Cloud (UI)
+   ↓  HTTPS
+Supabase (Backend)
+   - PostgreSQL Database
+   - REST API
+   - Real-time subscriptions
 ```
 
-### 데이터 초기화
-데이터베이스를 초기화하려면 `talent_matching.db` 파일을 삭제하고 앱을 다시 실행하세요.
+## 🔐 보안
 
-## ⚠️ 주의사항
-
-- `talent_matching.db` 파일은 데이터베이스이므로 삭제하지 마세요
-- 데이터베이스 파일을 정기적으로 백업하세요
-- 동시 사용자 수가 많으면 성능이 저하될 수 있습니다 (SQLite의 한계)
-- 대용량 데이터에는 적합하지 않습니다
-
-## 🔄 Google Sheet에서 SQLite로 마이그레이션
-
-이전에 Google Sheet를 사용하던 경우:
-
-1. Google Sheet에서 데이터를 CSV로 내보내기
-2. SQLite 데이터베이스에 데이터 임포트
-3. 또는 앱을 새로 시작하여 데이터를 다시 등록
+- Streamlit Secrets를 통한 안전한 키 관리
+- Supabase RLS (Row Level Security) 지원
+- HTTPS 자동 적용 (Streamlit Cloud)
 
 ## 📝 라이선스
 

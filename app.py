@@ -16,7 +16,25 @@ st.set_page_config(
 
 # 사이드바 정보
 st.sidebar.title("📌 재능기부포털")
-st.sidebar.success("✅ DB 연결됨")
+
+# Supabase 연결 확인
+try:
+    from database import get_supabase_client
+    client = get_supabase_client()
+    if client:
+        st.sidebar.success("✅ Supabase 연결됨")
+    else:
+        st.sidebar.warning("⚠️ Supabase 설정 필요")
+        with st.sidebar.expander("설정 방법"):
+            st.markdown("""
+            Streamlit Cloud Secrets에 다음을 추가하세요:
+            ```toml
+            SUPABASE_URL = "your-url"
+            SUPABASE_KEY = "your-key"
+            ```
+            """)
+except Exception as e:
+    st.sidebar.error(f"❌ DB 연결 오류: {str(e)}")
 
 # 메인 탭 구성
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -48,7 +66,7 @@ with tab1:
                 st.error("필수 항목(이름, 이메일, 재능)을 모두 입력해주세요.")
             else:
                 try:
-                    append_row("Donors", {
+                    append_row("donors", {
                         "donor_id": str(uuid.uuid4()),
                         "name": name,
                         "email": email,
@@ -83,7 +101,7 @@ with tab2:
                 st.error("필수 항목(이메일, 필요한 재능)을 모두 입력해주세요.")
             else:
                 try:
-                    append_row("Requests", {
+                    append_row("requests", {
                         "request_id": str(uuid.uuid4()),
                         "email": email,
                         "needed_skill": needed_skill,
